@@ -52,7 +52,7 @@ extern "C" {
   void appHandleEvents(struct gecko_cmd_packet *evt);
   const char *getAppOptions(void);
   void appOption(int option, const char *arg);
-  void appInit(void);
+  void appInit(int, char *const*, int);
   
 /** @} (end addtogroup app) */
 /** @} (end addtogroup Application) */

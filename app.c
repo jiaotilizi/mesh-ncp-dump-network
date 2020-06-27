@@ -19,6 +19,15 @@
 #include "common.h"
 #include "mesh_generic_model_capi_types.h"
 
+#include "parser.tab.h"
+#include <string.h>
+#include "scanner.h"
+#include "parser.h"
+
+YY_BUFFER_STATE yy_scan_string ( const char *yy_str  );
+
+int yyparse(void);
+
 // App booted flag
 static bool appBooted = false;
 static struct {
@@ -179,10 +188,22 @@ void appOption(int option, const char *arg) {
   }
 }
 
-void appInit(void) {
-  if(!config.server) {
-    config.publish = 1;
+void appInit(int argc, char *const*argv, int index) {
+  int arglen[argc];
+  int len = 0;
+  for(int i = index; i < argc; i++) {
+    arglen[i] = strlen(argv[i]);
+    len += arglen[i];
   }
+  len += argc - index;
+  char *buf = malloc(len);
+  len = 0;
+  for(int i = index; i < argc; i++) {
+    len += sprintf(&buf[len],"%s%s",(i>1)?" ":"",argv[i]);
+  }
+  yy_scan_string(buf);
+  int rc = yyparse();
+  if(rc || commands.abort) exit(1);
 }
 
 void list_nodes(void) {
@@ -214,7 +235,11 @@ void show_dcd(uint8 page, uint8 len, uint8*data) {
 	   (pd->features&2)?" Proxy":"",
 	   (pd->features&4)?" Friend":"",
 	   (pd->features&8)?" Low-power":"");
-    for(pe = data + sizeof(struct dcd0); pe < data+len; pe += 4 + 2*pe->nums + 4*pe->numv) {
+    for(
+	pe = (struct elements*)(data + sizeof(struct dcd0));
+	pe < (struct elements*)(data+len);
+	pe = (struct elements*)((void*)pe + 4 + 2*pe->nums + 4*pe->numv)
+	) {
       printf("\tLoc: %04x\n",pe->loc);
       printf("\t%d SIG Model IDs\n",pe->nums);
       printf("\t%d Vendor Model IDs\n",pe->numv);
@@ -283,8 +308,14 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
 #undef ED
 
   case gecko_evt_mesh_prov_initialized_id:
-    if(config.network_key) {
-      config.network_id = gecko_cmd_mesh_prov_create_network((config.network_key)?16:0,config.network_key)->network_id;
+    if(commands.get.factory_reset) {
+      gecko_cmd_flash_ps_erase_all();
+      exit(0);
+    }
+    if(commands.network_keys) {
+      for(struct network_keys *p = commands.network_keys; p; p = p->next) {
+	config.network_id = gecko_cmd_mesh_prov_create_network((p->key)?16:0,(uint8*)(p->key))->network_id;
+      }
       exit(0);
     }
     if(config.device_uuid) {
@@ -293,7 +324,7 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
     }
     //gecko_cmd_mesh_prov_provision_device(config.network_id, 16,&unprov_nodes->uuid[0]);
     //gecko_cmd_mesh_prov_create_appkey(0, 0, NULL);
-    if(config.scan) {
+    if(commands.get.list_unprovisioned) {
       gecko_cmd_mesh_prov_scan_unprov_beacons();
     } else if (config.server) {
       gecko_cmd_mesh_config_client_get_dcd(0, config.server, config.dcd_page);      

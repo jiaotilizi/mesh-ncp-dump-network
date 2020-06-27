@@ -267,8 +267,9 @@ static int appSerialPortInit(int argc, char* argv[], int32_t timeout)
     exit(EXIT_FAILURE);
   }
 
+  appInit(argc, argv, optind);
+
   /* Initialise the serial port with RTS/CTS enabled. */
   int rc = uartOpen((int8_t*)uart_port, baud_rate, flowcontrol, timeout);
-  appInit();
   return rc;
 }

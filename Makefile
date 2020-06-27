@@ -10,7 +10,7 @@
 LOC_SDK := ble-ncp-cli
 LOC_EXAMPLES := .
 
-DUMMY := ${shell chmod -Rc u+rwX .}
+#DUMMY := ${shell chmod -Rc u+rwX .}
 
 .SUFFIXES:				# ignore builtin rules
 .PHONY: all debug release clean
@@ -159,6 +159,7 @@ ${LOC_SDK}/support.c \
 main.c \
 app.c \
 common.c \
+lex.yy.c parser.tab.c parser-data.c
 
 # this file should be the last added
 ifeq ($(OS),posix)
@@ -202,6 +203,11 @@ debug:    $(EXE_DIR)/$(PROJECTNAME)
 
 release:  $(EXE_DIR)/$(PROJECTNAME)
 
+lex.yy.c scanner.h : scanner.l parser.tab.h
+	flex --header-file=scanner.h $^
+
+parser.tab.c parser.tab.h : parser.y
+	bison --defines -g -t $^
 
 # Create objects from C SRC files
 $(OBJ_DIR)/%.o: %.c
@@ -226,6 +232,8 @@ $(EXE_DIR)/$(PROJECTNAME): $(OBJS) $(LIBS)
 	$(CC) $(LDFLAGS) $^ -o $@
 	chmod 0755 $@
 
+
+$(OBJ_DIR)/app.o: scanner.h parser.tab.h
 
 clean:
 ifeq ($(filter $(MAKECMDGOALS),all debug release),)
