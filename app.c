@@ -280,6 +280,82 @@ void add_node(uint16 address, uint8 num_elements, struct gecko_msg_mesh_config_c
   add_handle_reference(resp->handle,n);
 }
 
+char *model_name(uint16 id) {
+  switch(id) {
+  case 0x0000:
+    return "Configuration Server";
+  case 0x0001:
+    return "Configuration Client";
+  case 0x0002:
+    return "Health Server";
+  case 0x0003:
+    return "Health Client";
+  case 0x1000:
+    return "Generic OnOff Server";
+  case 0x1001:
+    return "Generic OnOff Client";
+  case 0x1002:
+    return "Generic Level Server";
+  case 0x1003:
+    return "Generic Level Client";
+  case 0x1004:
+    return "Generic Time Server";
+  case 0x1005:
+    return "Generic Time Client";
+  case 0x1006:
+    return "Generic Power OnOff Server";
+  case 0x1007:
+    return "Generic Power OnOff Setup Server";
+  case 0x1008:
+    return "Generic Power OnOff Client";
+  case 0x1009:
+    return "Generic Power Level Server";
+  case 0x100a:
+    return "Generic Power Level Setup Server";
+  case 0x100b:
+    return "Generic Power Level Client";
+  case 0x100c:
+    return "Generic Battery Server";
+  case 0x100d:
+    return "Generic Battery Client";
+  case 0x100e:
+    return "Generic Location Server";
+  case 0x100f:
+    return "Generic Location Setup Server";
+  case 0x1010:
+    return "Generic Location Client";
+  case 0x1011:
+    return "Generic Admin Property Server";
+  case 0x1012:
+    return "Generic Manufacturer Property Server";
+  case 0x1013:
+    return "Generic User Property Server";
+  case 0x1014:
+    return "Generic Client Property Server";
+  case 0x1015:
+    return "Generic Property Client";
+  case 0x1203:
+    return "Scene Server";
+  case 0x1204:
+    return "Scene Setup Server";
+  case 0x1300:
+    return "Light Lightness Server";
+  case 0x1301:
+    return "Light Lightness Setup Server";
+  case 0x1303:
+    return "Light Lightness Setup Server";
+  case 0x1304:
+    return "Light CTL Setup Server";
+  case 0x1306:
+    return "Light CTL Temperature Server";
+  case 0x130f:
+    return "Light LC Server";
+  case 0x1310:
+    return "Light LC Setup Server";
+  }
+  return "unknown";
+}
+
 void show_node(struct node *node) {
   printf("Node:\n\tAddress: %04x\n",node->address);
   printf("\tCID: %04x\n",node->cid);
@@ -296,7 +372,7 @@ void show_node(struct node *node) {
     for(int j = 0; j < node->elements[i].num_models; j++) {
       struct model *m = &node->elements[i].models[j];
       if(0xffff == m->vendor) {
-	printf("\t\tSIG model %04x",m->id);
+	printf("\t\tSIG model %04x %s:",m->id,model_name(m->id));
       } else {
 	printf("\t\tVendor %04x model %04x\n",m->vendor,m->id);
       }
