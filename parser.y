@@ -12,18 +12,19 @@
   struct value *create_integer(int value);
   struct value *create_float(double value);
   void set_mode_and_attach(struct gpio_element *list, uint8_t mode);
+
 %}
 
 %union {
   struct value *value;
   struct gpio_element *gpio;
   double fp;
-  int integer;
+  int integer, unicast_address;
   uint8_t *get, *value_128;
   struct parameter *set;
 }
 %token HELP
-%token FACTORY_RESET SHOW LIST CREATE NETWORK UNPROVISIONED
+%token FACTORY_RESET SHOW INITIALIZE_NETWORK  LIST CREATE NETWORK UNPROVISIONED ADD NODE
 %token CONNECTED EM1 EM2 EM3 EM4H EM4S
 %token AVERAGE_RSSI RSSI_CHANNEL TEST
 %token OTA MEASURE MEASUREMENT_MODE UNKNOWN
@@ -38,6 +39,7 @@
 %token <value_128> VALUE_128
 %token <gpio> GPIO_PIN GPIO_PIN_ASSIGNMENT 
 %token ENABLE DISABLE
+%nterm <unicast_address> unicast_address
 %nterm <integer> command
 %nterm <get> peripheral
 %nterm <value> value gpio_pin_value
@@ -55,10 +57,12 @@ line :
 
 command :
 FACTORY_RESET { commands.get.factory_reset = 1; }
+| INITIALIZE_NETWORK unicast_address INT { commands.provisioner_address = $2; commands.ivi = $3; }
 | SHOW { commands.get.show = 1; }
 | CREATE NETWORK VALUE_128 { add_network_key($3); }
 | CREATE help { printf("create <key> <aes-key-128>: key can be network\n"); }
 | CREATE NETWORK help { printf("create network <aes-key-128>\n"); }
+| ADD NODE VALUE_128 VALUE_128 unicast_address INT { add_ddb_node($3,$4,$5,$6); }
 | LIST UNPROVISIONED { commands.get.list_unprovisioned = 1; }
 | AVERAGE_RSSI value { if(set_parameter(&commands.average_rssi,$2)) commands.abort = 1; free($2); }
 | MEASURE value value {
@@ -70,14 +74,19 @@ FACTORY_RESET { commands.get.factory_reset = 1; }
 			"\tduration: time in seconds to remain in specified mode before\n"
 			"\t\tadvertising as bg-control peripheral\n"); }
 | help { printf("Commands:\n"
-		"\tota\n"
-		"\taverage-rssi <seconds>\n"
-		"\tmeasure <mode> <seconds>\n"
-		"\tget <peripheral>\n"
-		"\tset <parameter> <value>\n"
+		"\tfactory-reset\n"
+		"\tinitialize-network <unicast-address> <ivi>\n"
+		"\tshow\n"
+		"\tcreate network <network-key>\n"
+		"\tlist unprovisioned\n"
+		"\tadd node <uuid-128> <aes-key-128> <unicast-address> <elements>\n"
 		"  Specify 'help' as peripheral or parameter to get list of supported names\n"); }
 | GPIO_DISABLED gpio_pin_list { set_mode_and_attach($2,0); }
 | GPIO_PUSHPULL gpio_pin_list { set_mode_and_attach($2,4); }
+;
+
+unicast_address :
+INT { validate_unicast_address($1); $$ = $1; }
 ;
 
 peripheral :

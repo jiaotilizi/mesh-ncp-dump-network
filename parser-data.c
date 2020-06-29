@@ -5,6 +5,7 @@
 
 struct commands commands = {
 			    .network_keys = NULL,
+			    .ddb_nodes = NULL,
 			    .abort = 0,
 			    .ota = 0,
 			    .gpio = NULL,
@@ -270,6 +271,29 @@ void add_network_key(uint8_t *key) {
   n->key = (aes_key_128 *)key;
   n->next = NULL;
   struct network_keys **p = &commands.network_keys;
+  while(1) {
+    if(!*p) {
+      *p = n;
+      return;
+    }
+    p = &(*p)->next;
+  }
+}
+
+void validate_unicast_address(int v) {
+  if((v > 0) && (v < 0x8000)) return;
+  fprintf(stderr,"Error: unicast address must be 0x0001...0x7fff.  0x%x not valid\n",v);
+  commands.abort = 1;
+}
+
+void add_ddb_node(uint8_t *uuid, uint8_t *key, uint16_t address, uint8_t elements) {
+  struct ddb_node *n = malloc(sizeof(struct ddb_node));
+  n->uuid = uuid;
+  n->key = key;
+  n->address = address;
+  n->elements = elements;
+  n->next = NULL;
+  struct ddb_node **p = &commands.ddb_nodes;
   while(1) {
     if(!*p) {
       *p = n;

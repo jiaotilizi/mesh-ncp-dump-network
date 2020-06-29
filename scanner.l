@@ -18,10 +18,13 @@ hexstr_128 {hexstr_64}{hexstr_64}
 
 "factory-reset" { RETURN(FACTORY_RESET); }
 "show" { RETURN(SHOW); }
+"initialize-network" { RETURN(INITIALIZE_NETWORK); }
 "list" { RETURN(LIST); }
 "unprovisioned" { RETURN(UNPROVISIONED); }
 "create" { RETURN(CREATE); }
 "network" { RETURN(NETWORK); }
+"add" { RETURN(ADD); }
+"node" { RETURN(NODE); }
 
 "average-rssi" { RETURN(AVERAGE_RSSI); }
 "measure" { RETURN(MEASURE); }
@@ -107,8 +110,9 @@ p[a-k][01]?[0-9] {
   //printf("int: %s\n",yytext); 
   RETURN(INT); 
 }
-"0x"[0-9a-fA-F]+ { 
-  sscanf(yytext,"%d",&yylval.integer); 
+"0x"[0-9a-fA-F]+ {
+  sscanf(yytext,"%x",&yylval.integer);
+  printf("\"0x\"[0-9a-fA-F]+: %s -> 0x%0x ",yytext,yylval.integer);
   RETURN(INT); 
 }
 
