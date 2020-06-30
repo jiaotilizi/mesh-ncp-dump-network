@@ -28,6 +28,12 @@ YY_BUFFER_STATE yy_scan_string ( const char *yy_str  );
 
 int yyparse(void);
 
+#define die(X) die_helper(X,__FILE__,__LINE__)
+void die_helper(const char *message, char*file, int line) {
+  fprintf(stderr,"%s:%d: %s\n",file,line,message);
+  exit(1);
+}
+
 // App booted flag
 static bool appBooted = false;
 static struct {
@@ -217,6 +223,7 @@ struct model {
   uint16 id;
   uint16 num_bindings, num_subs;
   uint16 *bindings, *subs;
+  uint8 no_sub_support;
 };
 
 struct element {
@@ -225,11 +232,19 @@ struct element {
   struct model *models;
 };
 
+struct heartbeat_pub {
+  uint16 destination_address, netkey_index, features;
+  uint8 count_log, period_log, ttl;
+};
+
 struct node {
   uint16 address, cid, pid, vid, crpl, features;
-  struct node *next;
   struct element *elements;
-  uint8 num_elements;
+  uint8 num_elements, default_ttl, beacon, identity, friend,
+    gatt_proxy, relay, transmit_count, retransmit_count;
+  uint16 transmit_interval_ms, retransmit_interval_ms;
+  struct heartbeat_pub heartbeat_pub;
+  struct node *next;
 } *nodes = NULL;
 
 struct handle_reference {
@@ -356,6 +371,17 @@ char *model_name(uint16 id) {
   return "unknown";
 }
 
+const char *feature_str(uint8 value) {
+  static char buf[64];
+  switch(value) {
+  case 0: return "disabled";
+  case 1: return "enabled";
+  case 2: return "not supported";
+  }
+  sprintf(buf,"ILLEGAL VALUE %d",value);
+  return buf;
+}
+
 void show_node(struct node *node) {
   printf("Node:\n\tAddress: %04x\n",node->address);
   printf("\tCID: %04x\n",node->cid);
@@ -367,6 +393,20 @@ void show_node(struct node *node) {
 	 (node->features&2)?" Proxy":"",
 	 (node->features&4)?" Friend":"",
 	 (node->features&8)?" Low-power":"");
+  printf("\tDefault TTL: %d\n",node->default_ttl);
+  printf("\tNode is%s broadcasting secure network beacons\n",(node->beacon)?"":" not");
+  printf("\tNode identity advertising is %s\n",feature_str(node->identity));
+  printf("\tFriend feature is %s\n",feature_str(node->friend));
+  printf("\tGATT proxy feature is %s\n",feature_str(node->gatt_proxy));
+  printf("\tRelay feature is %s",feature_str(node->relay));
+  if(1==node->relay) {
+    printf(", Retransmit count: %d", node->retransmit_count);
+    if(node->retransmit_count > 1) printf("interval: %d ms",10*node->retransmit_interval_ms);
+  }
+  printf("\n");
+  printf("\tNetwork transmit count: %d",node->transmit_count);
+    if(node->transmit_count > 1) printf("interval: %d ms",10*node->transmit_interval_ms);
+  printf("\n");
   for(int i = 0; i < node->num_elements; i++) {
     printf("\tElement %d, loc: %d:\n",i,node->elements[i].loc);
     for(int j = 0; j < node->elements[i].num_models; j++) {
@@ -384,6 +424,7 @@ void show_node(struct node *node) {
 	printf(", subscribed to address%s",(m->num_subs == 1)?"":"es");
 	for(int j = 0; j < m->num_subs; j++) printf(" %04x",m->subs[j]);
       }
+      if(m->no_sub_support) printf(" no subs support");
       printf("\n");
     }
   }
@@ -475,6 +516,116 @@ void register_list_subs(struct node *n, uint8 element, uint8 index,
   add_handle_reference_model(resp->handle, n, element, index);
 }
 
+void get_default_ttl(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_default_ttl_rsp_t *resp;
+  resp = gecko_cmd_mesh_config_client_get_default_ttl(0, node->address);
+  if(resp->result) die("gecko_cmd_mesh_config_client_get_default_ttl");
+  add_handle_reference(resp->handle,node);
+}
+
+void get_beacon(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_beacon_rsp_t *resp;
+  resp= gecko_cmd_mesh_config_client_get_beacon(0, node->address);
+  if(resp->result) die(__PRETTY_FUNCTION__);
+  add_handle_reference(resp->handle,node);
+}
+
+void get_identity(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_identity_rsp_t *resp;
+  resp = gecko_cmd_mesh_config_client_get_identity(0, node->address, 0);
+  if(resp->result) die(__PRETTY_FUNCTION__);
+  add_handle_reference(resp->handle,node);
+}
+
+void get_friend(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_friend_rsp_t *resp;
+  resp = gecko_cmd_mesh_config_client_get_friend(0, node->address);
+  if(resp->result) die(__PRETTY_FUNCTION__);
+  add_handle_reference(resp->handle,node);
+}
+
+void get_gatt_proxy(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_gatt_proxy_rsp_t *resp;
+  resp = gecko_cmd_mesh_config_client_get_gatt_proxy(0, node->address);
+  if(resp->result) die(__PRETTY_FUNCTION__);
+  add_handle_reference(resp->handle,node);
+}
+
+void get_relay(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_relay_rsp_t *resp;
+  resp = gecko_cmd_mesh_config_client_get_relay(0, node->address);
+  if(resp->result) die(__PRETTY_FUNCTION__);
+  add_handle_reference(resp->handle,node);
+}
+
+void get_network_transmit(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_network_transmit_rsp_t *resp;
+  resp = gecko_cmd_mesh_config_client_get_network_transmit(0, node->address);
+  if(resp->result) die(__PRETTY_FUNCTION__);
+  add_handle_reference(resp->handle,node);
+}
+
+void get_heartbeat_pub(struct node *node) {
+  struct gecko_msg_mesh_config_client_get_heartbeat_pub_rsp_t *resp;
+  resp = gecko_cmd_mesh_config_client_get_heartbeat_pub(0, node->address);
+  if(resp->result) die(__PRETTY_FUNCTION__);
+  add_handle_reference(resp->handle,node);
+}
+
+void got_default_ttl(struct handle_reference *hr, uint8 default_ttl) {
+  hr->node->default_ttl = default_ttl;
+  get_beacon(hr->node);
+}
+
+void got_beacon(struct handle_reference *hr, uint8 beacon) {
+  hr->node->beacon = beacon;
+  get_identity(hr->node);
+}
+
+void got_identity(struct handle_reference *hr, uint8 identity) {
+  hr->node->identity = identity;
+  get_friend(hr->node);
+}
+
+void got_friend(struct handle_reference *hr, uint8 friend) {
+  hr->node->friend = friend;
+  get_gatt_proxy(hr->node);
+}
+
+void got_gatt_proxy(struct handle_reference *hr, uint8 gatt_proxy) {
+  hr->node->gatt_proxy = gatt_proxy;
+  get_relay(hr->node);
+}
+
+void got_relay(struct handle_reference *hr, uint8 relay, uint8 retransmit_count, uint16 retransmit_interval_ms) {
+  hr->node->relay = relay;
+  hr->node->retransmit_count = retransmit_count;
+  hr->node->retransmit_interval_ms = retransmit_interval_ms;
+  get_network_transmit(hr->node);
+}
+
+void got_network_transmit(struct handle_reference *hr, uint8 transmit_count, uint16 transmit_interval_ms) {
+  hr->node->transmit_count = transmit_count;
+  hr->node->transmit_interval_ms = transmit_interval_ms;
+  get_heartbeat_pub(hr->node);
+}
+
+void got_heartbeat_pub(struct handle_reference *hr,
+		       uint16 destination_address,
+		       uint16 netkey_index,
+		       uint8 count_log,
+		       uint8 period_log,
+		       uint8 ttl,
+		       uint16 features) {
+  hr->node->heartbeat_pub.destination_address = destination_address;
+  hr->node->heartbeat_pub.netkey_index = netkey_index;
+  hr->node->heartbeat_pub.count_log = count_log;
+  hr->node->heartbeat_pub.period_log = period_log;
+  hr->node->heartbeat_pub.ttl = ttl;
+  hr->node->heartbeat_pub.features = features;
+  //get_heartbeat_sub(hr->node);
+}
+
 int update_reference(struct handle_reference *hr) {
   printf("update_reference: element: %d (%d), index: %d (%d)\n",hr->element,hr->node->num_elements,hr->index,hr->node->elements[hr->element].num_models);
   hr->index++;
@@ -487,18 +638,45 @@ int update_reference(struct handle_reference *hr) {
   return 1;
 }
 
+struct model *get_model(const struct handle_reference *hr) {
+  if(hr->element >= hr->node->num_elements) die("bad element");
+  if(hr->index >= hr->node->elements[hr->element].num_models) die("bad model index");
+  return &hr->node->elements[hr->element].models[hr->index];
+}
+
+void got_bindings(struct gecko_msg_mesh_config_client_bindings_list_evt_t *evt) {
+  const struct handle_reference *hr = find_handle_reference(evt->handle);
+  struct model *model = get_model(hr);
+  if(model->num_bindings || model->bindings) die("Binding already set\n");
+  model->num_bindings = evt->appkey_indices.len >> 1;
+  model->bindings = malloc(evt->appkey_indices.len);
+  memcpy(model->bindings,&evt->appkey_indices.data[0],evt->appkey_indices.len);
+}
+
+void got_subs(struct gecko_msg_mesh_config_client_subs_list_evt_t *evt) {
+  const struct handle_reference *hr = find_handle_reference(evt->handle);
+  struct model *model = get_model(hr);
+  if(model->num_subs || model->subs) die("Binding already set\n");
+  model->num_subs = evt->addresses.len >> 1;
+  model->subs = malloc(evt->addresses.len);
+  memcpy(model->subs,&evt->addresses.data[0],evt->addresses.len);
+}
+
 void do_next(uint32 id, uint16 result, uint32 handle) {
+  struct handle_reference *hr = find_handle_reference(handle);
+  struct node *n = hr->node;
+
   switch(result) {
   case 0:
     break;
-  case 0x0e08:
+  case 0x0e08: // Model does not support subscription
+    get_model(hr)->no_sub_support = 1;
     break;
   default:
     printf("Bad result %04x\n",result);
     exit(1);
   }
-  struct handle_reference *hr = find_handle_reference(handle);
-  struct node *n = hr->node;
+
   switch (id) {
   case gecko_evt_mesh_config_client_dcd_data_end_id:
     //gecko_cmd_mesh_config_client_add_appkey(0, config.server, 0, 0);
@@ -548,40 +726,12 @@ void do_next(uint32 id, uint16 result, uint32 handle) {
 								hr->element,
 								n->elements[hr->element].models[hr->index].vendor,
 								n->elements[hr->element].models[hr->index].id));
+    } else {
+      get_default_ttl(n);
     }
     break;
   //gecko_cmd_mesh_config_client_list_subs(0, config.server, 0, 0xffff, 0x1000); 
   }
-}
-
-#define die(X) die_helper(X,__FILE__,__LINE__)
-void die_helper(char *message, char*file, int line) {
-  fprintf(stderr,"%s:%d: %s\n",file,line,message);
-  exit(1);
-}
-
-struct model *get_model(const struct handle_reference *hr) {
-  if(hr->element >= hr->node->num_elements) die("bad element");
-  if(hr->index >= hr->node->elements[hr->element].num_models) die("bad model index");
-  return &hr->node->elements[hr->element].models[hr->index];
-}
-
-void set_bindings(struct gecko_msg_mesh_config_client_bindings_list_evt_t *evt) {
-  const struct handle_reference *hr = find_handle_reference(evt->handle);
-  struct model *model = get_model(hr);
-  if(model->num_bindings || model->bindings) die("Binding already set\n");
-  model->num_bindings = evt->appkey_indices.len >> 1;
-  model->bindings = malloc(evt->appkey_indices.len);
-  memcpy(model->bindings,&evt->appkey_indices.data[0],evt->appkey_indices.len);
-}
-
-void set_subs(struct gecko_msg_mesh_config_client_subs_list_evt_t *evt) {
-  const struct handle_reference *hr = find_handle_reference(evt->handle);
-  struct model *model = get_model(hr);
-  if(model->num_subs || model->subs) die("Binding already set\n");
-  model->num_subs = evt->addresses.len >> 1;
-  model->subs = malloc(evt->addresses.len);
-  memcpy(model->subs,&evt->addresses.data[0],evt->addresses.len);
 }
 
 uint16 my_address = 0;
@@ -694,6 +844,12 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
     break;
 #undef ED
     
+  case gecko_evt_mesh_config_client_dcd_data_id:
+#define ED evt->data.evt_mesh_config_client_dcd_data
+    show_dcd(ED.page,ED.data.len,&ED.data.data[0],ED.handle);
+    break;
+#undef ED
+    
   case gecko_evt_mesh_config_client_dcd_data_end_id:
 #define ED evt->data.evt_mesh_config_client_dcd_data_end
     do_next(BGLIB_MSG_ID(evt->header),ED.result,ED.handle);
@@ -714,7 +870,7 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
     
   case gecko_evt_mesh_config_client_bindings_list_id:
 #define ED evt->data.evt_mesh_config_client_bindings_list
-    set_bindings(&ED);
+    got_bindings(&ED);
     break;
 #undef ED
 
@@ -726,7 +882,7 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
 
   case gecko_evt_mesh_config_client_subs_list_id:
 #define ED evt->data.evt_mesh_config_client_subs_list
-    set_subs(&ED);
+    got_subs(&ED);
     break;
 #undef ED
 
@@ -735,16 +891,69 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
     do_next(BGLIB_MSG_ID(evt->header),ED.result,ED.handle);
     break;
 #undef ED
+
+  case gecko_evt_mesh_config_client_default_ttl_status_id:
+#define ED evt->data.evt_mesh_config_client_default_ttl_status
+    if(!ED.result) got_default_ttl(find_handle_reference(ED.handle),ED.value);
+    break;
+#undef ED
+
+  case gecko_evt_mesh_config_client_beacon_status_id:
+#define ED evt->data.evt_mesh_config_client_beacon_status
+    if(!ED.result) got_beacon(find_handle_reference(ED.handle),ED.value);    
+    break;
+#undef ED
+
+  case gecko_evt_mesh_config_client_identity_status_id:
+#define ED evt->data.evt_mesh_config_client_identity_status
+    if(!ED.result) got_identity(find_handle_reference(ED.handle),ED.value);    
+    break;
+#undef ED
+
+  case gecko_evt_mesh_config_client_friend_status_id:
+#define ED evt->data.evt_mesh_config_client_friend_status
+    if(!ED.result) got_friend(find_handle_reference(ED.handle),ED.value);    
+    break;
+#undef ED
+
+  case gecko_evt_mesh_config_client_gatt_proxy_status_id:
+#define ED evt->data.evt_mesh_config_client_gatt_proxy_status
+    if(!ED.result) got_gatt_proxy(find_handle_reference(ED.handle),ED.value);
+    break;
+#undef ED
+    
+  case gecko_evt_mesh_config_client_relay_status_id:
+#define ED evt->data.evt_mesh_config_client_relay_status
+    if(!ED.result) got_relay(find_handle_reference(ED.handle),
+			     ED.relay,
+			     ED.retransmit_count,
+			     ED.retransmit_interval_ms);
+    break;
+#undef ED
+    
+  case gecko_evt_mesh_config_client_network_transmit_status_id:
+#define ED evt->data.evt_mesh_config_client_network_transmit_status
+    if(!ED.result) got_network_transmit(find_handle_reference(ED.handle),
+					ED.transmit_count,
+					ED.transmit_interval_ms);
+    break;
+#undef ED
+
+  case gecko_evt_mesh_config_client_heartbeat_pub_status_id:
+#define ED evt->data.evt_mesh_config_client_heartbeat_pub_status
+    if(!ED.result) got_heartbeat_pub(find_handle_reference(ED.handle),
+				     ED.destination_address,
+				     ED.netkey_index,
+				     ED.count_log,
+				     ED.period_log,
+				     ED.ttl,
+				     ED.features);
+    break;
+#undef ED
     
   case gecko_evt_mesh_config_client_appkey_status_id:
     gecko_cmd_mesh_config_client_bind_model(0, config.server, 0, 0, 0xffff, 0x1000);
     break;
-    
-  case gecko_evt_mesh_config_client_dcd_data_id:
-#define ED evt->data.evt_mesh_config_client_dcd_data
-    show_dcd(ED.page,ED.data.len,&ED.data.data[0],ED.handle);
-    break;
-#undef ED
     
   case gecko_evt_mesh_node_initialized_id:
 #define ED evt->data.evt_mesh_node_initialized
