@@ -25,6 +25,10 @@ hexstr_128 {hexstr_64}{hexstr_64}
 "network" { RETURN(NETWORK); }
 "add" { RETURN(ADD); }
 "node" { RETURN(NODE); }
+"bind" { RETURN(BIND); }
+"provision" { RETURN(PROVISION); }
+"get" { RETURN(GET); }
+"devkey" { RETURN(DEVKEY); }
 
 "average-rssi" { RETURN(AVERAGE_RSSI); }
 "measure" { RETURN(MEASURE); }

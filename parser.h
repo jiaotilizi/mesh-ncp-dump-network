@@ -36,10 +36,29 @@ struct ddb_node {
   uint8_t elements;
   struct ddb_node *next;
 };
-  
+
+struct binding {
+  uint16_t server_address, appkey_index, vendor_id, model_id;
+  uint8_t element_index;
+  struct binding *next;
+};
+
+struct provision {
+  uuid_128 *uuid;
+  uint8_t network_id;
+  struct provision *next;
+};
+
+struct get_devkey {
+  uint16_t address;
+};
+
 struct commands {
   struct network_keys *network_keys;
   struct ddb_node *ddb_nodes;
+  struct binding *bindings;
+  struct provision *provisions;
+  struct get_devkey *get_devkey;
   struct {
     uint8_t factory_reset, show, list_unprovisioned;
   } get;
@@ -57,3 +76,5 @@ extern struct commands commands;
 void add_network_key(uint8_t *key);
 void validate_unicast_address(int v);
 void add_ddb_node(uint8_t *uuid, uint8_t *key, uint16_t address, uint8_t elements);
+void add_provision(uuid_128 *uuid, uint8_t network_id);
+void add_get_devkey(uint16_t address);

@@ -4,6 +4,8 @@
 #include <stdlib.h>
 
 struct commands commands = {
+			    .provisions = NULL,
+			    .get_devkey = NULL,
 			    .network_keys = NULL,
 			    .ddb_nodes = NULL,
 			    .abort = 0,
@@ -301,4 +303,44 @@ void add_ddb_node(uint8_t *uuid, uint8_t *key, uint16_t address, uint8_t element
     }
     p = &(*p)->next;
   }
+}
+
+void add_provision(uuid_128 *uuid, uint8_t network_id) {
+  struct provision *n = malloc(sizeof(struct provision));
+  n->uuid = uuid;
+  n->network_id = network_id;
+  n->next = NULL;
+  struct ddb_node **p = &commands.provisions;
+  while(1) {
+    if(!*p) {
+      *p = n;
+      return;
+    }
+    p = &(*p)->next;
+  }
+}
+
+void bind_model(uint16_t server_address, uint8_t element_index, uint16_t appkey_index, uint16_t vendor_id, uint16_t model_id) {
+  struct binding *n = malloc(sizeof(struct ddb_node));
+  n->server_address = server_address;
+  n->element_index = element_index;
+  n->appkey_index = appkey_index;
+  n->vendor_id = vendor_id;
+  n->model_id = model_id;
+  n->next = NULL;
+  struct ddb_node **p = &commands.bindings;
+  while(1) {
+    if(!*p) {
+      *p = n;
+      return;
+    }
+    p = &(*p)->next;
+  }
+  
+}
+
+void add_get_devkey(uint16_t address) {
+  struct get_devkey *p = malloc(sizeof(struct get_devkey));
+  p->address = address;
+  commands.get_devkey = p;
 }

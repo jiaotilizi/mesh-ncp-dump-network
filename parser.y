@@ -24,7 +24,7 @@
   struct parameter *set;
 }
 %token HELP
-%token FACTORY_RESET SHOW INITIALIZE_NETWORK  LIST CREATE NETWORK UNPROVISIONED ADD NODE
+%token FACTORY_RESET SHOW INITIALIZE_NETWORK  LIST CREATE NETWORK UNPROVISIONED ADD NODE BIND PROVISION GET DEVKEY
 %token CONNECTED EM1 EM2 EM3 EM4H EM4S
 %token AVERAGE_RSSI RSSI_CHANNEL TEST
 %token OTA MEASURE MEASUREMENT_MODE UNKNOWN
@@ -41,10 +41,8 @@
 %token ENABLE DISABLE
 %nterm <unicast_address> unicast_address
 %nterm <integer> command
-%nterm <get> peripheral
 %nterm <value> value gpio_pin_value
 %nterm <gpio> gpio_pin_assignment gpio_pin_list_element gpio_pin_list
-%nterm <set> parameter
 
 %start line
 
@@ -62,7 +60,12 @@ FACTORY_RESET { commands.get.factory_reset = 1; }
 | CREATE NETWORK VALUE_128 { add_network_key($3); }
 | CREATE help { printf("create <key> <aes-key-128>: key can be network\n"); }
 | CREATE NETWORK help { printf("create network <aes-key-128>\n"); }
+| PROVISION VALUE_128 INT { add_provision($2,$3); }
+| PROVISION VALUE_128 help { printf("provision <uuid> <network-index>\n"); }
+| PROVISION help { printf("provision <uuid> <network-index>\n"); }
 | ADD NODE VALUE_128 VALUE_128 unicast_address INT { add_ddb_node($3,$4,$5,$6); }
+| GET DEVKEY INT { add_get_devkey($3); }
+| BIND INT INT INT INT INT { bind_model($2,$3,$4,$5,$6); }
 | LIST UNPROVISIONED { commands.get.list_unprovisioned = 1; }
 | AVERAGE_RSSI value { if(set_parameter(&commands.average_rssi,$2)) commands.abort = 1; free($2); }
 | MEASURE value value {
@@ -78,8 +81,10 @@ FACTORY_RESET { commands.get.factory_reset = 1; }
 		"\tinitialize-network <unicast-address> <ivi>\n"
 		"\tshow\n"
 		"\tcreate network <network-key>\n"
+		"\tprovision <uuid> <network-index>\n"
 		"\tlist unprovisioned\n"
 		"\tadd node <uuid-128> <aes-key-128> <unicast-address> <elements>\n"
+		"\tbind <node> <element> <app-key-index> <vendor-id> <model-id>\n"
 		"  Specify 'help' as peripheral or parameter to get list of supported names\n"); }
 | GPIO_DISABLED gpio_pin_list { set_mode_and_attach($2,0); }
 | GPIO_PUSHPULL gpio_pin_list { set_mode_and_attach($2,4); }
@@ -87,30 +92,6 @@ FACTORY_RESET { commands.get.factory_reset = 1; }
 
 unicast_address :
 INT { validate_unicast_address($1); $$ = $1; }
-;
-
-peripheral :
-DCDC { $$ = &commands.get.dcdc; }
-| EMU { $$ = &commands.get.emu; }
-| GPIO { $$ = &commands.get.gpio; }
-| POWER_SETTINGS { $$ = &commands.get.power_settings; }
-| help { printf("Peripherals: DCDC EMU GPIO\n"); $$ = NULL; }
-;
-
-parameter :
-PA_MODE { $$ = &commands.pa_mode; }
-| PA_INPUT { $$ = &commands.pa_input; }
-| TX_POWER { $$ = &commands.tx_power; }
-| EM2_DEBUG { $$ = &commands.em2_debug; }
-| CONNECTION_INTERVAL { $$ = &commands.connection_interval; }
-| ADV_INTERVAL { $$ = &commands.adv_interval; }
-| ADV_LENGTH { $$ = &commands.adv_length; }
-| SLEEP_CLOCK_ACCURACY { $$ = &commands.sleep_clock_accuracy; }
-| RSSI_CHANNEL { $$ = &commands.rssi_channel; }
-| RANDOM_LOWER { $$ = &commands.random_lower; }
-| RANDOM_UPPER { $$ = &commands.random_upper; }
-| RANDOM_COUNT { $$ = &commands.random_count; }
-| DTM_CHANNEL { $$ = &commands.dtm_channel; }
 ;
 
 value :

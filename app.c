@@ -34,6 +34,14 @@ void die_helper(const char *message, char*file, int line) {
   exit(1);
 }
 
+static char *hex(uint8 len, uint8_t *in) {
+  static char out[4][256];
+  static uint8 index;
+  index &= 3;
+  for(int i = 0; i < len; i++) sprintf(&out[index][i<<1],"%02x",in[i]);
+  return &out[index++][0];
+}
+
 // App booted flag
 static bool appBooted = false;
 static struct {
@@ -672,6 +680,8 @@ void do_next(uint32 id, uint16 result, uint32 handle) {
   case 0x0e08: // Model does not support subscription
     get_model(hr)->no_sub_support = 1;
     break;
+  case 0x0e02: // ??
+    break;
   default:
     printf("Bad result %04x\n",result);
     exit(1);
@@ -734,6 +744,14 @@ void do_next(uint32 id, uint16 result, uint32 handle) {
   }
 }
 
+void process_bindings(void) {
+  struct gecko_msg_mesh_config_client_bind_model_rsp_t *resp;
+  struct binding *b = commands.bindings;
+  commands.bindings = b->next;
+  resp = gecko_cmd_mesh_config_client_bind_model(0, b->server_address, b->element_index, b->appkey_index, b->vendor_id, b->model_id);
+}
+
+
 uint16 my_address = 0;
 
 /***********************************************************************************************//**
@@ -785,6 +803,7 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
   case gecko_evt_system_boot_id: /*********************************************************************************** system_boot **/
 #define ED evt->data.evt_system_boot
     appBooted = true;
+    printf("Boot\n");
     //    if(unprov_nodes || config.server) {
       gecko_cmd_mesh_prov_init();
       //} else {
@@ -797,12 +816,23 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
 #define ED evt->data.evt_mesh_prov_initialized
     my_address = ED.address;
 #undef ED
+    if(commands.get_devkey) {
+      struct gecko_msg_mesh_test_prov_get_device_key_rsp_t *resp;
+      resp = gecko_cmd_mesh_test_prov_get_device_key(commands.get_devkey->address);
+      if(resp->result) exit(1);
+      printf("address: %04x, devkey: %s\n",commands.get_devkey->address,hex(16,&resp->device_key));
+      exit(0);
+    }
     if(commands.get.factory_reset) {
       gecko_cmd_flash_ps_erase_all();
       commands.get.factory_reset = 0;
       gecko_cmd_dfu_reset(0);
       break;
     }
+    if(commands.bindings) {
+      process_bindings();
+    }
+    //   break;
     if(commands.provisioner_address) {
       gecko_cmd_mesh_prov_initialize_network(commands.provisioner_address,commands.ivi);
       commands.provisioner_address = 0;
@@ -825,7 +855,14 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
       gecko_cmd_dfu_reset(0);
       break;
     }
-    //gecko_cmd_mesh_prov_provision_device(config.network_id, 16,&unprov_nodes->uuid[0]);
+    if(commands.provisions) {
+      struct provision *p = commands.provisions;
+      commands.provisions = p->next;
+      gecko_cmd_mesh_prov_provision_device(p->network_id, 16, p->uuid);
+      free(p->uuid);
+      free(p);
+      break;
+    }
     //gecko_cmd_mesh_prov_create_appkey(0, 0, NULL);
     if(commands.get.list_unprovisioned) {
       gecko_cmd_mesh_prov_scan_unprov_beacons();
